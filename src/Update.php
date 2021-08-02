@@ -156,6 +156,10 @@ class Update
      */
     private function request($url, $method = 'GET', $data = [])
     {
+        $ts = time();
+        $data['appid'] = $this->appid;
+        $data['ts'] = $ts;
+        $data['token'] = md5($this->appid . $ts . $this->appsecret);
         $addHeader = [];
         $curl = curl_init();
         curl_setopt_array($curl, [
@@ -196,8 +200,6 @@ class Update
     public function updateCheck()
     {
         $data = [
-            'appid' => $this->appid,
-            'appsecret' => $this->appsecret,
             'version' => $this->current_version,
             'domain' => $this->domain,
         ];
