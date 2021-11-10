@@ -82,6 +82,7 @@ Class Config
         // false为递归写入中
         if ('false' != $path) {
 
+            if (!is_dir(dirname($path))) mkdir(dirname($path), 0755, true);
             $type = strtolower(self::getExtName($path));
 
             // JSON文件直接写入即可
