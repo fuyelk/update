@@ -75,7 +75,7 @@ class Update
 
     /**
      * 配置数据库
-     * @param array $config
+     * @param array $config ['type','host','database','username','password','port','prefix']
      * @author fuyelk <fuyelk@fuyelk.com>
      */
     public function setDbConfig(array $config)

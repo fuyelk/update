@@ -96,7 +96,7 @@ Class Config
             // PHP文件,写文件头
             if ('.php' == $type) {
                 $str .= "<?php\n\nreturn\t[\n";
-            }else{
+            } else {
                 throw new UpdateException('不支持的配置文件格式');
             }
         }
@@ -174,11 +174,6 @@ Class Config
      */
     private static function getExtName(string $file): string
     {
-        $arrExt = explode('.', basename($file));
-        if (count($arrExt) > 1) {
-            $ext = end($arrExt);
-            return '.' . $ext;
-        }
-        return basename($file);
+        return strrchr($file, '.') ?: '';
     }
 }
