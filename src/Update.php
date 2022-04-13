@@ -48,7 +48,7 @@ class Update
     /**
      * @var string 配置文件路径
      */
-    private $config_path = '';
+    private $config_file = __DIR__ . '/config.json';
 
     /**
      * @var array 更新信息
@@ -85,23 +85,24 @@ class Update
 
     /**
      * Update constructor.
-     * @param string $options 配置參數 ['install_path','config_path']
+     * @param string $install_path 安装目录
+     * @param string $domain [域名]
+     * @param string $config_file [配置文件]
      * @throws UpdateException
      */
-    public function __construct(array $options)
+    public function __construct($install_path, $domain = '', $config_file = '')
     {
-        if (empty($options['install_path'])) {
+        if (empty($install_path)) {
             throw new UpdateException('未设置更新安装目录');
         }
 
-        if (empty($options['config_path'])) {
-            throw new UpdateException('未设置配置文件路径');
+        $this->config_file = $config_file ?: $this->config_file;
+        if (!is_dir(dirname($this->config_file))) {
+            throw new UpdateException('配置文件路径不存在');
         }
 
-        $this->install_path = $options['install_path'];
-        $this->config_path = $options['config_path'];
-        $this->domain = $options['domain'] ?? '';
-
+        $this->install_path = $install_path;
+        $this->domain = $domain ?? '';
         $this->initConfig();
     }
 
@@ -112,18 +113,7 @@ class Update
      */
     private function initConfig()
     {
-        $config = Config::get($this->config_path);
-        if (empty($config)) {
-            $template = [
-                'server_url' => $this->server_url,
-                'appid' => $this->appid,
-                'appsecret' => $this->appsecret,
-                'current_version' => $this->current_version,
-            ];
-            Config::set($template, $this->config_path);
-            throw new UpdateException('初始化配置请修改[' . str_replace('\\', '/', $this->config_path) . ']配置文件');
-        }
-
+        $config = $this->getRedisConf();
         if (empty($config['server_url'])) {
             throw new UpdateException('服务器接口地址配置有误');
         }
@@ -143,6 +133,51 @@ class Update
             throw new UpdateException('APP版本号配置有误');
         }
         $this->current_version = $config['current_version'];
+    }
+
+    /**
+     * 获取redis配置
+     * @param bool|string $key [配置名]
+     * @return array|mixed
+     * @throws UpdateException
+     * @author fuyelk <fuyelk@fuyelk.com>
+     */
+    public function getRedisConf($key = false)
+    {
+        // 验证配置文件的有效性
+        if (is_file($this->config_file)) {
+            $data = file_get_contents($this->config_file);
+            if (!empty($data) and $config = json_decode($data, true)) {
+                return $key ? ($config[$key] ?? null) : $config;
+            }
+        }
+        $this->setConfig();
+        throw new UpdateException('初始化配置请修改[' . str_replace('\\', '/', $this->config_file) . ']配置文件');
+    }
+
+    /**
+     * 创建配置文件
+     * @param array $config 配置内容
+     * @return bool
+     * @author fuyelk <fuyelk@fuyelk.com>
+     */
+    protected function setConfig($config = [])
+    {
+        $config = $config ?: [
+            'server_url' => $this->server_url,
+            'appid' => $this->appid,
+            'appsecret' => $this->appsecret,
+            'current_version' => $this->current_version,
+        ];
+
+        if (!is_dir(dirname($this->config_file))) {
+            mkdir(dirname($this->config_file), 0755, true);
+        }
+
+        $fp = fopen($this->config_file, 'w');
+        fwrite($fp, json_encode($config, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+        fclose($fp);
+        return true;
     }
 
     /**
@@ -285,7 +320,7 @@ class Update
             'update_info' => $this->updateInfo
         ];
 
-        Config::set($config, $this->config_path);
+        $this->setConfig($config);
 
         if ($recheck) {
             return $this->updateCheck();
