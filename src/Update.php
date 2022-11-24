@@ -9,7 +9,6 @@
 
 namespace fuyelk\update;
 
-use fuyelk\db\Db;
 use fuyelk\install\Install;
 use fuyelk\install\InstallException;
 
@@ -68,7 +67,7 @@ class Update
     /**
      * @return array
      */
-    public function getUpdateInfo()
+    public function getUpdateInfo(): array
     {
         return $this->updateInfo;
     }
@@ -90,17 +89,13 @@ class Update
      * @param string $config_file [配置文件]
      * @throws UpdateException
      */
-    public function __construct($install_path, $domain = '', $config_file = '')
+    public function __construct(string $install_path, string $domain = '', string $config_file = '')
     {
         if (empty($install_path)) {
-            throw new UpdateException('未设置更新安装目录');
+            throw new UpdateException('', UpdateException::ERROR_INSTALL_PATH_NOT_SET);
         }
 
         $this->config_file = $config_file ?: $this->config_file;
-        if (!is_dir(dirname($this->config_file))) {
-            throw new UpdateException('配置文件路径不存在');
-        }
-
         $this->install_path = $install_path;
         $this->domain = $domain ?? '';
         $this->initConfig();
@@ -115,22 +110,22 @@ class Update
     {
         $config = $this->getRedisConf();
         if (empty($config['server_url'])) {
-            throw new UpdateException('服务器接口地址配置有误');
+            throw new UpdateException('', UpdateException::ERROR_SERVER_URL);
         }
         $this->server_url = $config['server_url'];
 
         if (empty($config['appid'])) {
-            throw new UpdateException('APPID配置有误');
+            throw new UpdateException('', UpdateException::ERROR_APPID);
         }
         $this->appid = $config['appid'];
 
         if (empty($config['appsecret'])) {
-            throw new UpdateException('APPSECRET配置有误');
+            throw new UpdateException('', UpdateException::ERROR_APP_SECRET);
         }
         $this->appsecret = $config['appsecret'];
 
         if (empty($config['current_version'])) {
-            throw new UpdateException('APP版本号配置有误');
+            throw new UpdateException('', UpdateException::ERROR_CURRENT_VERSION);
         }
         $this->current_version = $config['current_version'];
     }
@@ -152,7 +147,9 @@ class Update
             }
         }
         $this->setConfig();
-        throw new UpdateException('初始化配置请修改[' . str_replace('\\', '/', $this->config_file) . ']配置文件');
+        $configFile = str_replace('\\', '/', $this->config_file);
+        throw new UpdateException('初始化配置请修改[' . $configFile . ']配置文件',
+            UpdateException::WARNING_CONFIG_UNINITIALIZED);
     }
 
     /**
@@ -161,7 +158,7 @@ class Update
      * @return bool
      * @author fuyelk <fuyelk@fuyelk.com>
      */
-    protected function setConfig($config = [])
+    protected function setConfig(array $config = []): bool
     {
         $config = $config ?: [
             'server_url' => $this->server_url,
@@ -189,7 +186,7 @@ class Update
      * @throws UpdateException
      * @author fuyelk <fuyelk@fuyelk.com>
      */
-    private function request($url, $method = 'GET', $data = [])
+    private function request(string $url, string $method = 'GET', array $data = [])
     {
         $ts = time();
         $data['appid'] = $this->appid;
@@ -213,7 +210,7 @@ class Update
 
         if ($data) {
             $data = http_build_query($data);
-            array_push($addHeader, 'Content-type:application/x-www-form-urlencoded');
+            $addHeader[] = 'Content-type:application/x-www-form-urlencoded';
             curl_setopt($curl, CURLOPT_POSTFIELDS, $data);
         }
         curl_setopt($curl, CURLOPT_HTTPHEADER, $addHeader);
@@ -221,7 +218,7 @@ class Update
         $err = curl_error($curl);
         curl_close($curl);
         if ($err) {
-            throw new UpdateException('网络错误', 404);
+            throw new UpdateException('', UpdateException::ERROR_NETWORK);
         }
         return $response;
     }
@@ -230,9 +227,8 @@ class Update
      * 检查更新
      * @throws UpdateException
      * @author fuyelk <fuyelk@fuyelk.com>
-     * @date 2021/06/28 22:51
      */
-    public function updateCheck()
+    public function updateCheck(): bool
     {
         $data = [
             'version' => $this->current_version,
@@ -242,18 +238,18 @@ class Update
         // 请求更新接口
         $response = $this->request($this->server_url, 'POST', $data);
         if (empty($response)) {
-            throw new UpdateException('未查询到版本信息');
+            throw new UpdateException('未查询到版本信息', UpdateException::SERVER_ERROR);
         }
 
         // 校验更新接口信息
         $res = json_decode($response, true);
         if (empty($res) || !isset($res['code']) || !isset($res['msg'])) {
-            throw new UpdateException('未查询到版本信息');
+            throw new UpdateException('未查询到版本信息', UpdateException::SERVER_ERROR);
         }
 
         // 接口状态不能为0
         if (empty($res['code']) || empty($res['data']) || !isset($res['data']['new_version_found'])) {
-            throw new UpdateException($res['msg']);
+            throw new UpdateException($res['msg'], UpdateException::SERVER_NOTICE);
         }
 
         $this->updateInfo = $res['data'];
@@ -273,19 +269,19 @@ class Update
      * @throws UpdateException
      * @author fuyelk <fuyelk@fuyelk.com>
      */
-    public function install(bool $recheck = false)
+    public function install(bool $recheck = false): bool
     {
         $info = $this->updateInfo;
         if (empty($info)) {
-            throw new UpdateException('请先检查更新');
+            throw new UpdateException('', UpdateException::WARNING_UPDATE_NOT_CHECKED);
         }
 
         if (empty($info['new_version_found']) || empty($this->updateInfo['new_version'])) {
-            throw new UpdateException('已是最新版本无需更新');
+            throw new UpdateException('', UpdateException::WARNING_IS_LATEST_VERSION);
         }
 
         if (empty($info['download_url'])) {
-            throw new UpdateException('没有找到下载地址');
+            throw new UpdateException('', UpdateException::ERROR_DOWNLOAD_URL_NOT_FOUND);
         }
 
         // 安装更新
@@ -307,7 +303,7 @@ class Update
 
             Install::install($info['download_url']);
         } catch (InstallException $e) {
-            throw new UpdateException($e->getMessage());
+            throw new UpdateException($e->getMessage(), UpdateException::INSTALL_ERROR);
         }
 
         $this->current_version = $this->updateInfo['new_version'];
